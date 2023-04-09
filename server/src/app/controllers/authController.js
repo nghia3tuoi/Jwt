@@ -18,7 +18,7 @@ class authController {
 			//check input valid
 			const { error } = userValidate(req.body);
 			if (error) {
-				return res.status(200).json({
+				return res.status(400).json({
 					code: 1,
 					message: error.details[0].message,
 				});
@@ -37,12 +37,12 @@ class authController {
 				//save create user
 				user.save();
 				//
-				return res.status(200).json({
+				return res.status(400).json({
 					code: 0,
 					message: "Sign up successfully!",
 				});
 			} else {
-				return res.status(200).json({
+				return res.status(400).json({
 					code: 2,
 					message: "Email already exists!",
 				});
@@ -61,7 +61,7 @@ class authController {
 			//check input
 			const { error } = userValidate(req.body);
 			if (error) {
-				return res.status(200).json({
+				return res.status(400).json({
 					errCode: 1,
 					message: error.details[0].message,
 				});
@@ -74,7 +74,7 @@ class authController {
 					email: email,
 				});
 				if (!user) {
-					return res.status(200).json({
+					return res.status(400).json({
 						errCode: 2,
 						message: "Email is incorrect!",
 					});
@@ -82,7 +82,7 @@ class authController {
 				//check password is not correct
 				const isValidPassword = bcrypt.compareSync(password, user.password);
 				if (!isValidPassword) {
-					return res.status(200).json({
+					return res.status(400).json({
 						errCode: 3,
 						message: "Password is incorrect!",
 					});
@@ -90,8 +90,9 @@ class authController {
 				// email and password is correct
 				if (user && isValidPassword) {
 					const userId = user._id;
-					const accessToken = await generateAccessToken(userId);
-					const refreshToken = await generateRefreshToken(userId);
+					const role = user.role;
+					const accessToken = await generateAccessToken(userId, role);
+					const refreshToken = await generateRefreshToken(userId, role);
 					res.cookie("refreshToken", refreshToken, {
 						httpOnly: true,
 						secure: false,
@@ -107,7 +108,7 @@ class authController {
 					});
 				}
 			} else {
-				return res.status(200).json({
+				return res.status(400).json({
 					errCode: 4,
 					message: "Email is not alredy exists!",
 				});
@@ -131,8 +132,14 @@ class authController {
 			}
 			const userPayload = await verifyRefreshToken(refreshToken);
 			if (userPayload) {
-				const newAccessToken = await generateAccessToken(userPayload.id);
-				const newRefreshToken = await generateRefreshToken(userPayload.id);
+				const newAccessToken = await generateAccessToken(
+					userPayload.id,
+					userPayload.role
+				);
+				const newRefreshToken = await generateRefreshToken(
+					userPayload.id,
+					userPayload.role
+				);
 				res.cookie("refreshToken", newRefreshToken, {
 					httpOnly: true,
 					secure: false,
@@ -145,7 +152,7 @@ class authController {
 					newRefreshToken,
 				});
 			} else {
-				return res.status(400).json({
+				return res.status(404).json({
 					errCode: 2,
 					message: "Token not is valid!",
 				});
@@ -183,6 +190,25 @@ class authController {
 				errCode: -1,
 				message: "sign out failed!",
 			});
+		}
+	};
+	googleLogin = async (req, res, next) => {
+		try {
+			const user = await Users.findOne({ email: req.user.email });
+			if (!user) {
+				return res.status(401).json({ code: 1, message: "Unauthorized" });
+			}
+			const accessToken = await generateAccessToken(user.id, user.role);
+			const refreshToken = await generateRefreshToken(user.id, user.role);
+			res.cookie("refreshToken", refreshToken, {
+				httpOnly: true,
+				secure: false,
+				path: "/",
+				sameSite: "strict",
+			});
+			return res.json({ code: 0, user: user, accessToken });
+		} catch (error) {
+			return res.json({ code: -1, message: `login falied!, ${error}` });
 		}
 	};
 }
